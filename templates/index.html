@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Running Machine Video Sync</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            width: 100%;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background: linear-gradient(180deg, #86c6ff 0%, #d9f1ff 35%, #7ad29d 100%);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 30px;
+            box-shadow: inset 0 0 25px rgba(0, 0, 0, 0.08);
+        }
+
+        .scene {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: linear-gradient(180deg, #7ec8ff 0%, #dff7ff 38%, #a9e8af 100%);
+        }
+
+        .background-layer {
+            position: absolute;
+            inset: 0;
+            opacity: 0.9;
+            transition: transform 0.25s ease-out;
+            will-change: transform;
+        }
+
+        .background-layer video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: brightness(0.75) saturate(0.8);
+            transform: scale(1.08);
+        }
+
+        .scene-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(180deg, rgba(255,255,255,0.15), rgba(35,71,92,0.08));
+            pointer-events: none;
+        }
+
+        .runner-track {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 30%;
+            background: linear-gradient(180deg, #697c73 0%, #3a4b44 100%);
+            border-top: 5px solid rgba(255,255,255,0.4);
+            overflow: hidden;
+        }
+
+        .treadmill-lane {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: rgba(0,0,0,0.12);
+        }
+
+        .treadmill-lane::before {
+            content: "";
+            position: absolute;
+            inset: 12% 0 0;
+            background: repeating-linear-gradient(
+                90deg,
+                rgba(255,255,255,0.08) 0,
+                rgba(255,255,255,0.08) 18px,
+                rgba(0,0,0,0.12) 18px,
+                rgba(0,0,0,0.12) 36px
+            );
+            transform: translateX(0);
+            will-change: transform;
+        }
+
+        .runner-track::before,
+        .runner-track::after {
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 38%;
+            height: 2px;
+            background: rgba(255,255,255,0.2);
+            box-shadow: 0 18px 0 rgba(255,255,255,0.2), 0 36px 0 rgba(255,255,255,0.2);
+        }
+
+        .runner-track::after {
+            bottom: 10%;
+            left: -20%;
+            right: -20%;
+            height: 12px;
+            background: repeating-linear-gradient(
+                90deg,
+                rgba(255,255,255,0.1) 0,
+                rgba(255,255,255,0.1) 18px,
+                rgba(0,0,0,0.08) 18px,
+                rgba(0,0,0,0.08) 34px
+            );
+            opacity: 0.6;
+        }
+
+        .runner {
+            position: absolute;
+            left: 18%;
+            bottom: 20%;
+            width: 120px;
+            height: 180px;
+            transform-origin: center bottom;
+            transition: transform 0.12s linear;
+            filter: drop-shadow(0 12px 10px rgba(0, 0, 0, 0.18));
+        }
+
+        .runner-shadow {
+            position: absolute;
+            left: 18px;
+            bottom: -8px;
+            width: 82px;
+            height: 24px;
+            background: rgba(0, 0, 0, 0.18);
+            border-radius: 50%;
+            transform: scaleX(1.1);
+        }
+
+        .runner-body {
+            position: absolute;
+            left: 28px;
+            top: 42px;
+            width: 56px;
+            height: 68px;
+            background: linear-gradient(180deg, #ff6a4d 0%, #d94b38 100%);
+            border-radius: 18px 18px 14px 14px;
+            transform: rotate(var(--body-lean, 0deg));
+            transform-origin: center center;
+            transition: transform 0.16s ease-out;
+        }
+
+        .runner-head {
+            position: absolute;
+            left: 36px;
+            top: 10px;
+            width: 40px;
+            height: 40px;
+            background: #f7d3b6;
+            border-radius: 50%;
+            border: 3px solid rgba(0,0,0,0.08);
+            transform: rotate(var(--head-lean, 0deg));
+            transform-origin: center bottom;
+            transition: transform 0.16s ease-out;
+        }
+
+        .runner-arm,
+        .runner-leg {
+            position: absolute;
+            background: #2d4052;
+            border-radius: 20px;
+            transform-origin: center top;
+            animation: stride 0.5s ease-in-out infinite alternate;
+        }
+
+        .runner-arm.left {
+            left: 18px;
+            top: 58px;
+            width: 14px;
+            height: 60px;
+        }
+
+        .runner-arm.right {
+            right: 18px;
+            top: 58px;
+            width: 14px;
+            height: 60px;
+            animation-delay: 0.2s;
+        }
+
+        .runner-leg.left {
+            left: 32px;
+            top: 102px;
+            width: 16px;
+            height: 68px;
+            animation-delay: 0.15s;
+        }
+
+        .runner-leg.right {
+            right: 32px;
+            top: 102px;
+            width: 16px;
+            height: 68px;
+            animation-delay: 0.35s;
+        }
+
+        @keyframes stride {
+            0% { transform: rotate(18deg); }
+            100% { transform: rotate(-18deg); }
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .control-group {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        .control-group label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .control-group input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .stat-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-start {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-start:hover {
+            background: #218838;
+        }
+
+        .btn-stop {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-stop:hover {
+            background: #c82333;
+        }
+
+        .btn-reset {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-reset:hover {
+            background: #5a6268;
+        }
+
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .controls {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏃 Running Machine Video Sync</h1>
+            <p>Synchronize video playback with your treadmill speed</p>
+        </div>
+
+        <div class="content">
+            <div id="status" class="status disconnected">
+                Status: Waiting for connection...
+            </div>
+
+            <div class="video-container">
+                <div class="scene">
+                    <div class="background-layer">
+                        <video id="videoPlayer" loop muted playsinline>
+                            <source src="/static/videos/running.mp4" type="video/mp4">
+                            Your browser does not support HTML5 video.
+                        </video>
+                    </div>
+                    <div class="scene-overlay"></div>
+                    <div class="runner-track">
+                        <div class="treadmill-lane"></div>
+                    </div>
+                    <div id="runner" class="runner" aria-label="Runner">
+                        <div class="runner-shadow"></div>
+                        <div class="runner-head"></div>
+                        <div class="runner-body"></div>
+                        <div class="runner-arm left"></div>
+                        <div class="runner-arm right"></div>
+                        <div class="runner-leg left"></div>
+                        <div class="runner-leg right"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats">
+                <div class="stat-box">
+                    <div class="stat-label">Current Speed</div>
+                    <div class="stat-value" id="speedDisplay">0.0</div>
+                    <div class="stat-label">km/h</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Distance</div>
+                    <div class="stat-value" id="distanceDisplay">0.0</div>
+                    <div class="stat-label">m</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Playback Speed</div>
+                    <div class="stat-value" id="playbackSpeedDisplay">1.0x</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Video Time</div>
+                    <div class="stat-value" id="videoTimeDisplay">0:00</div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <div class="control-group">
+                    <label>Simulated Speed (km/h):</label>
+                    <input type="number" id="speedInput" min="0" max="30" step="0.5" value="0" placeholder="Enter speed">
+                </div>
+                <div class="control-group">
+                    <label>Simulated Distance (m):</label>
+                    <input type="number" id="distanceInput" min="0" step="10" value="0" placeholder="Enter distance">
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn-start" onclick="startSimulation()">Start Simulation</button>
+                <button class="btn-stop" onclick="stopSimulation()">Stop Simulation</button>
+                <button class="btn-reset" onclick="resetSimulation()">Reset</button>
+            </div>
+
+            <div class="info-box">
+                <strong>How it works:</strong>
+                <p style="margin-top: 10px;">
+                    1. Enter your running speed and distance (from treadmill sensor)<br>
+                    2. The video playback speed adjusts automatically based on your speed<br>
+                    3. Video moves faster when you run faster, slower when you run slower<br>
+                    4. In production, this connects directly to your treadmill sensor API
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('videoPlayer');
+        const speedDisplay = document.getElementById('speedDisplay');
+        const distanceDisplay = document.getElementById('distanceDisplay');
+        const playbackSpeedDisplay = document.getElementById('playbackSpeedDisplay');
+        const statusDisplay = document.getElementById('status');
+        const videoTimeDisplay = document.getElementById('videoTimeDisplay');
+        const runner = document.getElementById('runner');
+        const backgroundLayer = document.querySelector('.background-layer');
+        const treadmillLane = document.querySelector('.treadmill-lane');
+
+        let currentState = {
+            speed: 0,
+            distance: 0,
+            isRunning: false,
+            targetDistance: 0,
+            simulationStartTime: 0,
+            elapsedBeforeStart: 0,
+            timerIntervalId: null,
+            animationFrameId: null
+        };
+
+        const BASE_SPEED = 10; // km/h - baseline speed for video
+        const MAX_PLAYBACK = 2.0;
+        const MIN_PLAYBACK = 0.5;
+
+        function clearSimulationTimer() {
+            if (currentState.timerIntervalId) {
+                clearInterval(currentState.timerIntervalId);
+                currentState.timerIntervalId = null;
+            }
+            if (currentState.animationFrameId) {
+                cancelAnimationFrame(currentState.animationFrameId);
+                currentState.animationFrameId = null;
+            }
+        }
+
+        // Calculate playback speed based on running speed
+        function calculatePlaybackSpeed(speedKmh) {
+            // Linear mapping: BASE_SPEED -> 1.0x playback
+            // Faster speeds increase playback rate, slower speeds decrease it
+            const ratio = speedKmh / BASE_SPEED;
+            let playbackSpeed = ratio;
+
+            // Clamp between min and max
+            playbackSpeed = Math.max(MIN_PLAYBACK, Math.min(MAX_PLAYBACK, playbackSpeed));
+
+            return parseFloat(playbackSpeed.toFixed(2));
+        }
+
+        // Update video playback speed
+        function updateVideoPlayback(speed) {
+            const playbackSpeed = calculatePlaybackSpeed(speed);
+            video.playbackRate = 1.0;
+            playbackSpeedDisplay.textContent = playbackSpeed.toFixed(2) + 'x';
+        }
+
+        function updatePlaybackPreviewFromInput() {
+            const speed = parseFloat(document.getElementById('speedInput').value) || 0;
+            const playbackSpeed = calculatePlaybackSpeed(speed);
+            playbackSpeedDisplay.textContent = playbackSpeed.toFixed(2) + 'x';
+            video.playbackRate = 1.0;
+
+            if (!currentState.isRunning) {
+                speedDisplay.textContent = speed.toFixed(1);
+                if (speed <= 0) {
+                    video.pause();
+                }
+            }
+        }
+
+        function updateRunnerMovement() {
+            const speed = currentState.isRunning ? currentState.speed : (parseFloat(document.getElementById('speedInput').value) || 0);
+            const distance = currentState.distance || 0;
+            const speedFactor = speed > 0 ? 1 - Math.exp(-speed / 11) : 0;
+            const travelX = Math.min(distance * 2.1, 220);
+            const bounce = Math.sin((performance.now() / 150) + distance * 0.6) * (speed > 0 ? 8 + speedFactor * 10 : 0);
+            const lean = speed > 0 ? -18 - speed * 0.7 : 0;
+            const crouchScale = speed > 0 ? 1 + speedFactor * 0.1 : 1;
+            const parallaxX = speed > 0 ? Math.sin(performance.now() / 500) * (8 + speedFactor * 12) + distance * 0.12 : 0;
+            const laneScroll = speed > 0 ? ((performance.now() - currentState.simulationStartTime) * (0.12 + speed / 18)) % 180 : 0;
+
+            if (runner) {
+                runner.style.transform = `translate(${travelX}px, ${bounce}px) rotate(${lean}deg) scale(${crouchScale})`;
+                runner.style.setProperty('--body-lean', `${lean * 0.7}deg`);
+                runner.style.setProperty('--head-lean', `${lean * 0.35}deg`);
+            }
+
+            if (backgroundLayer) {
+                backgroundLayer.style.transform = `translateX(${parallaxX}px) scale(1.08)`;
+            }
+
+            if (treadmillLane) {
+                treadmillLane.style.transform = `translateX(${-laneScroll}px)`;
+            }
+        }
+
+        // Update UI with current state
+        function updateUI() {
+            speedDisplay.textContent = currentState.speed.toFixed(1);
+            distanceDisplay.textContent = currentState.distance.toFixed(1);
+
+            const minutes = Math.floor(video.currentTime / 60);
+            const seconds = Math.floor(video.currentTime % 60);
+            videoTimeDisplay.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+            updateVideoPlayback(currentState.speed);
+            updateRunnerMovement();
+
+            if (currentState.speed > 0) {
+                statusDisplay.className = 'status connected';
+                statusDisplay.textContent = '✓ Status: Running';
+            } else if (currentState.targetDistance > 0 && currentState.distance >= currentState.targetDistance) {
+                statusDisplay.className = 'status connected';
+                statusDisplay.textContent = '✓ Status: Distance reached';
+            } else {
+                statusDisplay.className = 'status disconnected';
+                statusDisplay.textContent = '⊗ Status: Stopped';
+            }
+        }
+
+        // Fetch current state from backend
+        async function fetchState() {
+            try {
+                const response = await fetch('/api/running-state');
+                const data = await response.json();
+                currentState.speed = data.speed;
+                currentState.distance = data.distance;
+                currentState.isRunning = data.is_running;
+                updateUI();
+            } catch (error) {
+                console.error('Error fetching state:', error);
+            }
+        }
+
+        // Send sensor data to backend
+        async function sendSensorData(speed, distance) {
+            try {
+                const response = await fetch('/api/sensor/data', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ speed, distance })
+                });
+                const data = await response.json();
+                console.log('Sent:', data);
+            } catch (error) {
+                console.error('Error sending data:', error);
+            }
+        }
+
+        function stopRunningState() {
+            clearSimulationTimer();
+            currentState.isRunning = false;
+            currentState.speed = 0;
+            currentState.targetDistance = 0;
+            video.pause();
+            updateUI();
+        }
+
+        // Simulation functions
+        async function startSimulation() {
+            const speed = parseFloat(document.getElementById('speedInput').value) || 0;
+            const targetDistance = parseFloat(document.getElementById('distanceInput').value) || 0;
+
+            clearSimulationTimer();
+            currentState.speed = speed;
+            currentState.distance = 0;
+            currentState.targetDistance = targetDistance;
+            currentState.isRunning = speed > 0;
+            currentState.simulationStartTime = performance.now();
+            currentState.elapsedBeforeStart = 0;
+
+            video.currentTime = 0;
+            video.pause();
+            videoTimeDisplay.textContent = '0:00';
+
+            if (speed > 0) {
+                video.play();
+                await sendSensorData(speed, 0);
+
+                const tick = () => {
+                    if (!currentState.isRunning) {
+                        return;
+                    }
+
+                    const elapsedSeconds = (performance.now() - currentState.simulationStartTime) / 1000;
+                    const calculatedDistance = (speed / 3.6) * elapsedSeconds;
+                    const distanceReached = targetDistance > 0 && calculatedDistance >= targetDistance;
+
+                    if (distanceReached) {
+                        currentState.distance = targetDistance;
+                        currentState.speed = 0;
+                        currentState.isRunning = false;
+                        sendSensorData(0, targetDistance);
+                        clearSimulationTimer();
+                        video.pause();
+                        updateUI();
+                        return;
+                    }
+
+                    currentState.distance = calculatedDistance;
+                    sendSensorData(speed, currentState.distance);
+                    updateRunnerMovement();
+                    updateUI();
+                    currentState.animationFrameId = requestAnimationFrame(tick);
+                };
+
+                currentState.animationFrameId = requestAnimationFrame(tick);
+            } else {
+                await sendSensorData(0, 0);
+            }
+
+            updateUI();
+        }
+
+        async function stopSimulation() {
+            if (!currentState.isRunning && currentState.speed === 0) {
+                return;
+            }
+
+            clearSimulationTimer();
+            currentState.isRunning = false;
+            currentState.speed = 0;
+            currentState.targetDistance = 0;
+            currentState.elapsedBeforeStart = currentState.distance;
+            await sendSensorData(0, currentState.distance);
+            video.pause();
+            updateUI();
+        }
+
+        async function resetSimulation() {
+            clearSimulationTimer();
+            currentState.speed = 0;
+            currentState.distance = 0;
+            currentState.isRunning = false;
+            currentState.targetDistance = 0;
+            currentState.simulationStartTime = 0;
+            currentState.elapsedBeforeStart = 0;
+
+            video.pause();
+            video.currentTime = 0;
+            videoTimeDisplay.textContent = '0:00';
+            if (runner) {
+                runner.style.transform = 'translate(0px, 0px) rotate(0deg) scale(1)';
+                runner.style.setProperty('--body-lean', '0deg');
+                runner.style.setProperty('--head-lean', '0deg');
+            }
+            if (backgroundLayer) {
+                backgroundLayer.style.transform = 'translateX(0px) scale(1.08)';
+            }
+            if (treadmillLane) {
+                treadmillLane.style.transform = 'translateX(0px)';
+            }
+            await sendSensorData(0, 0);
+            updateUI();
+        }
+
+        document.getElementById('speedInput').addEventListener('input', () => {
+            updatePlaybackPreviewFromInput();
+            updateRunnerMovement();
+        });
+
+        // Update UI regularly (simulate sensor polling)
+        setInterval(fetchState, 500);
+
+        // Update video time display
+        video.addEventListener('timeupdate', () => {
+            const minutes = Math.floor(video.currentTime / 60);
+            const seconds = Math.floor(video.currentTime % 60);
+            videoTimeDisplay.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        });
+
+        // Initialize UI
+        updatePlaybackPreviewFromInput();
+        updateUI();
+    </script>
+</body>
+</html>
