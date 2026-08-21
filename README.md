@@ -1,6 +1,6 @@
 # Running Machine Video Sync
 
-A Python web application that synchronizes video playback with treadmill sensor data. The video playback speed automatically adjusts based on your running speed, creating an immersive experience where the video background moves faster as you run faster.
+The video background moves faster as you run faster.
 
 ## Features
 
